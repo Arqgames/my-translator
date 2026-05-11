@@ -244,14 +244,9 @@
     }
 
     async function translateText(sourceText) {
-      const apiKey = await loadApiKey();
-      if (!apiKey) {
-        updateStatus('APIキーが見つかりません。', false);
-        return null;
-      }
       const prompt = getPromptText(sourceText);
       try {
-        const response = await fetch('https://my-translator-proxy.a222smile.workers.dev/v1/messages', {
+        const response = await fetch('https://my-translator-proxy.a222smile.workers.dev', {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
