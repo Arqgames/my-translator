@@ -93,9 +93,23 @@
       white-space: nowrap;
     }
     .indicator.recording {
-      background: rgba(234, 88, 12, .18);
+      background: rgba(16, 185, 129, .18);
+      color: #6ee7b7;
+      box-shadow: 0 0 0 4px rgba(16, 185, 129, .08);
+    }
+    .indicator.processing {
+      background: rgba(234, 88, 12, .22);
       color: #ffb470;
-      box-shadow: 0 0 0 4px rgba(234, 88, 12, .08);
+      animation: pulse 1.3s ease-in-out infinite;
+    }
+    @keyframes pulse {
+      0%, 100% { box-shadow: 0 0 0 3px rgba(234, 88, 12, .1); }
+      50% { box-shadow: 0 0 0 9px rgba(234, 88, 12, .2); }
+    }
+    select:disabled, .swap-btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+      pointer-events: none;
     }
     #toggleButton {
       flex: 1;
@@ -254,6 +268,7 @@
     const transcriptHeader = document.getElementById('transcriptHeader');
     const transcriptToggle = document.getElementById('transcriptToggle');
     const copyBtn = document.getElementById('copyBtn');
+    const swapBtn = document.getElementById('swapBtn');
 
     let recognition = null;
     let isRecording = false;
@@ -285,11 +300,18 @@
       return languages.find(item => item.value === value);
     }
 
-    function updateStatus(text, recording = false) {
+    // state: 'stopped' | 'recording' | 'processing'
+    function updateStatus(text, state = 'stopped') {
       statusIndicator.textContent = text;
-      statusIndicator.classList.toggle('recording', recording);
-      toggleButton.textContent = recording ? '録音を停止' : '録音を開始';
-      toggleButton.classList.toggle('stopped', !recording);
+      statusIndicator.classList.toggle('recording', state === 'recording');
+      statusIndicator.classList.toggle('processing', state === 'processing');
+      const active = state !== 'stopped';
+      toggleButton.textContent = active ? '録音を停止' : '録音を開始';
+      toggleButton.classList.toggle('stopped', !active);
+      const locked = state === 'processing';
+      sourceSelect.disabled = locked;
+      targetSelect.disabled = locked;
+      swapBtn.disabled = locked;
     }
 
     function appendHistory(translatedText) {
@@ -345,7 +367,7 @@
       } else if (currentTarget === 'tl') {
         special = 'フィリピンで使われる自然な口語表現を使用してください。';
       }
-      return `次のテキストを${source.label}から${target.label}に翻訳してください。${special}翻訳結果のみを返してください。前置き・説明・注釈は不要です。\n\n${original}`;
+      return `次のテキストを${target.label}に翻訳してください。${special}翻訳した文章のみを返してください。前置き・注釈・言語に関するコメントは一切不要です。テキストが短くても不完全でも、推測して翻訳し、翻訳文のみを出力してください。\n\n${original}`;
     }
 
     async function translateText(sourceText) {
@@ -385,14 +407,14 @@
       if (!pendingTranscript) return;
       const toTranslate = pendingTranscript;
       pendingTranscript = '';
-      updateStatus('翻訳中...', true);
+      updateStatus('翻訳中...', 'processing');
       const translated = await translateText(toTranslate);
       if (translated) {
         addTranscript(toTranslate);
         appendHistory(translated);
-        if (isRecording) updateStatus('録音中', true);
+        if (isRecording) updateStatus('録音中', 'recording');
       } else if (isRecording) {
-        updateStatus('翻訳に失敗しました。', true);
+        updateStatus('翻訳に失敗しました。', 'recording');
       }
     }
 
@@ -404,6 +426,7 @@
 
       pendingTranscript += (pendingTranscript ? ' ' : '') + finalTranscript;
       clearTimeout(translationTimer);
+      updateStatus('認識中...', 'processing');
       translationTimer = setTimeout(flushTranslation, TRANSLATION_DELAY);
     }
 
@@ -419,20 +442,20 @@
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
 
-      recognition.onstart = () => { console.log('音声認識開始'); updateStatus('録音中', true); };
+      recognition.onstart = () => { console.log('音声認識開始'); updateStatus('録音中', 'recording'); };
       recognition.onend = () => {
         console.log('音声認識終了');
         if (isRecording) {
           recognition.start();
         } else {
-          updateStatus('停止中', false);
+          updateStatus('停止中', 'stopped');
         }
       };
       recognition.onerror = event => {
         console.log('音声認識エラー:', event.error);
         if (event.error === 'aborted' || event.error === 'no-speech') return;
         isRecording = false;
-        updateStatus('音声認識エラー: ' + event.error, false);
+        updateStatus('音声認識エラー: ' + event.error, 'stopped');
       };
       recognition.onresult = event => {
         console.log('音声認識結果:', event.results);
@@ -440,7 +463,7 @@
       };
       recognition.start();
       isRecording = true;
-      updateStatus('録音中', true);
+      updateStatus('録音中', 'recording');
     }
 
     function stopRecognition() {
@@ -454,7 +477,7 @@
         recognition = null;
       }
       isRecording = false;
-      updateStatus('停止中', false);
+      updateStatus('停止中', 'stopped');
       if (pendingTranscript) flushTranslation();
     }
 
@@ -479,7 +502,7 @@
       currentTarget = event.target.value;
     });
 
-    document.getElementById('swapBtn').addEventListener('click', () => {
+    swapBtn.addEventListener('click', () => {
       const tmp = currentSource;
       currentSource = currentTarget;
       currentTarget = tmp;
@@ -495,7 +518,7 @@
     toggleButton.addEventListener('click', toggleRecording);
 
     createOptions();
-    updateStatus('準備完了', false);
+    updateStatus('準備完了', 'stopped');
 
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', () => {
