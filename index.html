@@ -259,7 +259,7 @@
                 content: [{ type: 'text', text: prompt }]
               }
             ],
-            max_tokens_to_sample: 300,
+            max_tokens: 1000,
             temperature: 0.2
           })
         });
@@ -268,7 +268,7 @@
           throw new Error(`APIエラー: ${response.status} ${errorData}`);
         }
         const data = await response.json();
-        return data.completion?.content?.[0]?.text || data.completion || data.output?.[0]?.content?.[0]?.text || data.response || null;
+        return data.content?.[0]?.text || null;
       } catch (error) {
         console.error(error);
         updateStatus('翻訳に失敗しました。', false);
