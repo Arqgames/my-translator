@@ -279,16 +279,20 @@
     }
 
     async function handleResult(event) {
-      const transcript = Array.from(event.results)
-        .slice(event.resultIndex)
-        .map(result => result[0].transcript)
-        .join('')
-        .trim();
-      if (!transcript) return;
+      const results = Array.from(event.results).slice(event.resultIndex);
+      const interim = results.map(r => r[0].transcript).join('').trim();
+      const finalTranscript = results.filter(r => r.isFinal).map(r => r[0].transcript).join('').trim();
+
+      if (interim && !finalTranscript) {
+        updateStatus('聞き取り中: ' + interim.slice(0, 20) + '…', true);
+        return;
+      }
+      if (!finalTranscript) return;
+
       updateStatus('翻訳中...', true);
-      const translated = await translateText(transcript);
+      const translated = await translateText(finalTranscript);
       if (translated) {
-        appendHistory(transcript, translated);
+        appendHistory(finalTranscript, translated);
         updateStatus('録音中', true);
       } else if (isRecording) {
         updateStatus('翻訳に失敗しました。', true);
@@ -304,7 +308,7 @@
       recognition = new SpeechRecognition();
       recognition.lang = getLanguageData(currentSource).recognition;
       recognition.continuous = true;
-      recognition.interimResults = false;
+      recognition.interimResults = true;
       recognition.maxAlternatives = 1;
 
       recognition.onstart = () => updateStatus('録音中', true);
