@@ -245,6 +245,7 @@
 
     async function translateText(sourceText) {
       const prompt = getPromptText(sourceText);
+      console.log('翻訳リクエスト送信:', sourceText);
       try {
         const response = await fetch('https://my-translator-proxy.a222smile.workers.dev', {
           method: 'POST',
@@ -263,17 +264,17 @@
             temperature: 0.2
           })
         });
+        console.log('翻訳レスポンス status:', response.status);
         if (!response.ok) {
           const errorData = await response.text();
-          console.error('レスポンス詳細:', response.status, errorData);
-          throw new Error(`APIエラー: ${response.status} ${errorData}`);
+          console.error('翻訳エラーレスポンス:', response.status, errorData);
+          return null;
         }
         const data = await response.json();
+        console.log('翻訳レスポンス data:', data);
         return data.content?.[0]?.text || null;
       } catch (error) {
-        console.error('詳細エラー:', error.message, error.stack);
-        console.error(error);
-        updateStatus('翻訳に失敗しました。', false);
+        console.error('翻訳fetch失敗 (CORSまたはネットワークエラーの可能性):', error.message);
         return null;
       }
     }
