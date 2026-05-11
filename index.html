@@ -278,6 +278,7 @@
     const transcriptLog = [];
     let pendingTranscript = '';
     let translationTimer = null;
+    let processedCount = 0;
     const TRANSLATION_DELAY = 3000;
 
     function createOptions() {
@@ -421,8 +422,10 @@
     function handleResult(event) {
       let finalTranscript = '';
       for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (i < processedCount) continue;
         if (event.results[i].isFinal) {
           finalTranscript += event.results[i][0].transcript;
+          processedCount = i + 1;
         }
       }
       finalTranscript = finalTranscript.trim();
@@ -446,7 +449,7 @@
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
 
-      recognition.onstart = () => { console.log('音声認識開始'); updateStatus('録音中', 'recording'); };
+      recognition.onstart = () => { processedCount = 0; console.log('音声認識開始'); updateStatus('録音中', 'recording'); };
       recognition.onend = () => {
         console.log('音声認識終了');
         if (isRecording) {
