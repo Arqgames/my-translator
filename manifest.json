@@ -1,7 +1,7 @@
 {
-  "name": "音声翻訳トランスレーター",
-  "short_name": "音声翻訳",
-  "description": "日本語・台湾繁体字・タガログ語・英語対応の音声翻訳PWAアプリ",
+  "name": "リアルタイムトランスレーター",
+  "short_name": "翻訳",
+  "description": "日本語・台湾繁体字・タガログ語・英語対応のリアルタイム音声翻訳PWAアプリ",
   "start_url": ".",
   "display": "standalone",
   "background_color": "#090b10",
