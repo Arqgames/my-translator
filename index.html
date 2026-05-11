@@ -288,6 +288,8 @@
       if (translated) {
         appendHistory(transcript, translated);
         updateStatus('録音中', true);
+      } else if (isRecording) {
+        updateStatus('翻訳に失敗しました。', true);
       }
     }
 
