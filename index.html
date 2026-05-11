@@ -272,6 +272,10 @@
         }
         const data = await response.json();
         console.log('翻訳レスポンス data:', data);
+        if (data.type === 'error') {
+          console.error('Claude APIエラー:', data.error?.message);
+          return null;
+        }
         return data.content?.[0]?.text || null;
       } catch (error) {
         console.error('翻訳fetch失敗 (CORSまたはネットワークエラーの可能性):', error.message);
