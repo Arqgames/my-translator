@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no" />
+  <meta name="theme-color" content="#0a74da" />
+  <link rel="manifest" href="manifest.json" />
+  <title>音声翻訳トランスレーター</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #090b10;
+      color: #f7f7f7;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      background: radial-gradient(circle at top, rgba(10,116,218,.15), transparent 35%),
+                  linear-gradient(180deg, #10131a 0%, #06080f 100%);
+    }
+    header {
+      padding: 22px 18px 10px;
+      display: grid;
+      gap: 12px;
+    }
+    h1 {
+      margin: 0;
+      font-size: 1.3rem;
+      letter-spacing: 0.03em;
+    }
+    .select-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    select {
+      width: 100%;
+      padding: 14px 12px;
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.04);
+      color: #fff;
+      font-size: 1rem;
+      appearance: none;
+    }
+    main {
+      flex: 1;
+      padding: 0 18px 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+    .status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .indicator {
+      min-width: 90px;
+      padding: 10px 14px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: .95rem;
+      text-align: center;
+      background: rgba(255,255,255,.08);
+      color: #f1f5f9;
+    }
+    .indicator.recording {
+      background: rgba(234, 88, 12, .18);
+      color: #ffb470;
+      box-shadow: 0 0 0 4px rgba(234, 88, 12, .08);
+    }
+    button {
+      width: 100%;
+      padding: 18px 16px;
+      border: none;
+      border-radius: 24px;
+      background: linear-gradient(135deg, #0a74da, #2359b8);
+      color: #fff;
+      font-size: 1.05rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      cursor: pointer;
+      box-shadow: 0 18px 35px rgba(7, 37, 87, 0.22);
+      transition: transform .18s ease, background .18s ease;
+    }
+    button:active { transform: scale(.98); }
+    button.stopped { background: linear-gradient(135deg, #0d263f, #12263e); }
+    .hint {
+      font-size: .9rem;
+      color: rgba(255,255,255,.68);
+      line-height: 1.5;
+    }
+    .history {
+      border: 1px solid rgba(255,255,255,.08);
+      border-radius: 24px;
+      padding: 14px;
+      background: rgba(255,255,255,.03);
+      display: grid;
+      gap: 12px;
+      overflow-y: auto;
+      min-height: 280px;
+      max-height: 52vh;
+    }
+    .entry {
+      padding: 14px 16px;
+      border-radius: 18px;
+      background: rgba(255,255,255,.05);
+      box-shadow: inset 0 0 0 1px rgba(255,255,255,.05);
+    }
+    .entry strong {
+      display: block;
+      margin-bottom: 8px;
+      font-size: .95rem;
+      color: #cbd5e1;
+    }
+    .entry p {
+      margin: 0;
+      font-size: 1.05rem;
+      line-height: 1.55;
+      color: #fff;
+      word-break: break-word;
+    }
+    footer {
+      padding: 8px 18px 18px;
+      font-size: .85rem;
+      color: rgba(255,255,255,.55);
+      text-align: center;
+    }
+    @media (max-width: 540px) {
+      header { padding-top: 16px; }
+      .history { min-height: 240px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>音声翻訳トランスレーター</h1>
+    <div class="select-row">
+      <label>
+        <span class="hint">翻訳元</span>
+        <select id="sourceLang"></select>
+      </label>
+      <label>
+        <span class="hint">翻訳先</span>
+        <select id="targetLang"></select>
+      </label>
+    </div>
+  </header>
+  <main>
+    <div class="status-bar">
+      <div id="statusIndicator" class="indicator">準備完了</div>
+      <button id="toggleButton" class="stopped" type="button">録音を開始</button>
+    </div>
+    <div class="hint">翻訳元の言語をもとに音声認識を行い、発話を検知したたびに自動で翻訳を行います。</div>
+    <div class="history" id="history" aria-live="polite"></div>
+  </main>
+  <footer>アンソロピックClaude APIを利用。<strong>.env</strong> に <code>ANTHROPIC_API_KEY</code> を設定してください。</footer>
+  <script>
+    const languages = [
+      { value: 'ja', label: '日本語', recognition: 'ja-JP', display: '日本語' },
+      { value: 'zh-TW', label: '台湾繁体字', recognition: 'zh-TW', display: '台湾繁体字' },
+      { value: 'tl', label: 'タガログ語', recognition: 'tl-PH', display: 'タガログ語' },
+      { value: 'en', label: '英語', recognition: 'en-US', display: '英語' }
+    ];
+
+    const sourceSelect = document.getElementById('sourceLang');
+    const targetSelect = document.getElementById('targetLang');
+    const toggleButton = document.getElementById('toggleButton');
+    const statusIndicator = document.getElementById('statusIndicator');
+    const historyContainer = document.getElementById('history');
+
+    let recognition = null;
+    let isRecording = false;
+    let currentSource = 'ja';
+    let currentTarget = 'en';
+
+    function createOptions() {
+      languages.forEach(lang => {
+        const sourceOption = document.createElement('option');
+        sourceOption.value = lang.value;
+        sourceOption.textContent = lang.label;
+        sourceSelect.appendChild(sourceOption);
+
+        const targetOption = document.createElement('option');
+        targetOption.value = lang.value;
+        targetOption.textContent = lang.label;
+        targetSelect.appendChild(targetOption);
+      });
+      sourceSelect.value = currentSource;
+      targetSelect.value = currentTarget;
+    }
+
+    function getLanguageData(value) {
+      return languages.find(item => item.value === value);
+    }
+
+    function updateStatus(text, recording = false) {
+      statusIndicator.textContent = text;
+      statusIndicator.classList.toggle('recording', recording);
+      toggleButton.textContent = recording ? '録音を停止' : '録音を開始';
+      toggleButton.classList.toggle('stopped', !recording);
+    }
+
+    function appendHistory(sourceText, translatedText) {
+      const entry = document.createElement('div');
+      entry.className = 'entry';
+      const sourceLabel = document.createElement('strong');
+      sourceLabel.textContent = `${getLanguageData(currentSource).label} → ${getLanguageData(currentTarget).label}`;
+      const sourcePara = document.createElement('p');
+      sourcePara.textContent = sourceText;
+      const targetPara = document.createElement('p');
+      targetPara.style.marginTop = '10px';
+      targetPara.style.color = '#dbeafe';
+      targetPara.textContent = translatedText;
+      entry.appendChild(sourceLabel);
+      entry.appendChild(sourcePara);
+      entry.appendChild(targetPara);
+      historyContainer.prepend(entry);
+    }
+
+    function getPromptText(original) {
+      const target = getLanguageData(currentTarget);
+      const source = getLanguageData(currentSource);
+      let special = '';
+      if (currentTarget === 'zh-TW') {
+        special = '台湾で使われる繁体字で翻訳してください。';
+      } else if (currentTarget === 'tl') {
+        special = 'フィリピンで使われる自然な口語表現で翻訳してください。';
+      }
+      return `以下の指示に従ってください。\n翻訳元: ${source.label}、翻訳先: ${target.label}。\n${special}\n\n"${original}"\n`;
+    }
+
+    async function loadApiKey() {
+      if (window.ANTHROPIC_API_KEY) {
+        return window.ANTHROPIC_API_KEY.trim();
+      }
+      try {
+        const res = await fetch('.env');
+        if (!res.ok) throw new Error('ENV not found');
+        const text = await res.text();
+        const match = text.match(/^ANTHROPIC_API_KEY=(.+)$/m);
+        return match ? match[1].trim() : null;
+      } catch (error) {
+        return null;
+      }
+    }
+
+    async function translateText(sourceText) {
+      const apiKey = await loadApiKey();
+      if (!apiKey) {
+        updateStatus('APIキーが見つかりません。', false);
+        return null;
+      }
+      const prompt = getPromptText(sourceText);
+      try {
+        const response = await fetch('https://api.anthropic.com/v1/complete', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-API-Key': apiKey
+          },
+          body: JSON.stringify({
+            model: 'claude-3.5',
+            prompt,
+            max_tokens_to_sample: 300,
+            temperature: 0.2,
+            stop_sequences: ['\n\n']
+          })
+        });
+        if (!response.ok) {
+          const errorData = await response.text();
+          throw new Error(`APIエラー: ${response.status} ${errorData}`);
+        }
+        const data = await response.json();
+        return data.completion || data.output?.[0]?.content?.[0]?.text || data.response || null;
+      } catch (error) {
+        console.error(error);
+        updateStatus('翻訳に失敗しました。', false);
+        return null;
+      }
+    }
+
+    async function handleResult(event) {
+      const transcript = Array.from(event.results)
+        .slice(event.resultIndex)
+        .map(result => result[0].transcript)
+        .join('')
+        .trim();
+      if (!transcript) return;
+      updateStatus('翻訳中...', true);
+      const translated = await translateText(transcript);
+      if (translated) {
+        appendHistory(transcript, translated);
+        updateStatus('録音中', true);
+      }
+    }
+
+    function startRecognition() {
+      if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
+        updateStatus('お使いのブラウザは音声認識に対応していません。', false);
+        return;
+      }
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognition = new SpeechRecognition();
+      recognition.lang = getLanguageData(currentSource).recognition;
+      recognition.continuous = true;
+      recognition.interimResults = false;
+      recognition.maxAlternatives = 1;
+
+      recognition.onstart = () => updateStatus('録音中', true);
+      recognition.onend = () => {
+        if (isRecording) {
+          recognition.start();
+        } else {
+          updateStatus('停止中', false);
+        }
+      };
+      recognition.onerror = event => {
+        console.error('SpeechRecognition error', event.error);
+        updateStatus('音声認識エラー: ' + event.error, false);
+      };
+      recognition.onresult = handleResult;
+      recognition.start();
+      isRecording = true;
+      updateStatus('録音中', true);
+    }
+
+    function stopRecognition() {
+      if (recognition) {
+        recognition.onresult = null;
+        recognition.onerror = null;
+        recognition.onend = null;
+        recognition.stop();
+        recognition = null;
+      }
+      isRecording = false;
+      updateStatus('停止中', false);
+    }
+
+    function toggleRecording() {
+      if (isRecording) {
+        stopRecognition();
+      } else {
+        startRecognition();
+      }
+    }
+
+    sourceSelect.addEventListener('change', event => {
+      currentSource = event.target.value;
+      if (isRecording) {
+        stopRecognition();
+        startRecognition();
+      }
+    });
+
+    targetSelect.addEventListener('change', event => {
+      currentTarget = event.target.value;
+    });
+
+    toggleButton.addEventListener('click', toggleRecording);
+
+    createOptions();
+    updateStatus('準備完了', false);
+
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('sw.js').catch(err => console.warn('SW登録失敗', err));
+      });
+    }
+  </script>
+</body>
+</html>
