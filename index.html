@@ -265,11 +265,13 @@
         });
         if (!response.ok) {
           const errorData = await response.text();
+          console.error('レスポンス詳細:', response.status, errorData);
           throw new Error(`APIエラー: ${response.status} ${errorData}`);
         }
         const data = await response.json();
         return data.content?.[0]?.text || null;
       } catch (error) {
+        console.error('詳細エラー:', error.message, error.stack);
         console.error(error);
         updateStatus('翻訳に失敗しました。', false);
         return null;
