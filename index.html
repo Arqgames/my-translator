@@ -161,7 +161,6 @@
     }
     .copy-btn:active { background: rgba(255,255,255,.14); }
     .transcript-list {
-      display: none;
       padding: 0 14px 14px;
       max-height: 30vh;
       overflow-y: auto;
@@ -246,6 +245,9 @@
     let currentTarget = 'ja';
     let transcriptOpen = false;
     const transcriptLog = [];
+    let pendingTranscript = '';
+    let translationTimer = null;
+    const TRANSLATION_DELAY = 1500;
 
     function createOptions() {
       languages.forEach(lang => {
@@ -280,13 +282,14 @@
       const p = document.createElement('p');
       p.textContent = translatedText;
       entry.appendChild(p);
-      historyContainer.prepend(entry);
+      historyContainer.appendChild(entry);
+      historyContainer.scrollTop = historyContainer.scrollHeight;
     }
 
     function addTranscript(sourceText) {
       const now = new Date();
       const timeStr = now.toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-      transcriptLog.unshift({ time: timeStr, text: sourceText });
+      transcriptLog.push({ time: timeStr, text: sourceText });
 
       const entry = document.createElement('div');
       entry.className = 'transcript-entry';
@@ -297,7 +300,8 @@
       p.textContent = sourceText;
       entry.appendChild(time);
       entry.appendChild(p);
-      transcriptList.prepend(entry);
+      transcriptList.appendChild(entry);
+      transcriptList.scrollTop = transcriptList.scrollHeight;
     }
 
     transcriptHeader.addEventListener('click', () => {
@@ -361,26 +365,30 @@
       }
     }
 
-    async function handleResult(event) {
-      const results = Array.from(event.results).slice(event.resultIndex);
-      const interim = results.map(r => r[0].transcript).join('').trim();
-      const finalTranscript = results.filter(r => r.isFinal).map(r => r[0].transcript).join('').trim();
-
-      if (interim && !finalTranscript) {
-        updateStatus('聞き取り中: ' + interim.slice(0, 20) + '…', true);
-        return;
-      }
-      if (!finalTranscript) return;
-
+    async function flushTranslation() {
+      if (!pendingTranscript) return;
+      const toTranslate = pendingTranscript;
+      pendingTranscript = '';
       updateStatus('翻訳中...', true);
-      const translated = await translateText(finalTranscript);
+      const translated = await translateText(toTranslate);
       if (translated) {
-        addTranscript(finalTranscript);
+        addTranscript(toTranslate);
         appendHistory(translated);
-        updateStatus('録音中', true);
+        if (isRecording) updateStatus('録音中', true);
       } else if (isRecording) {
         updateStatus('翻訳に失敗しました。', true);
       }
+    }
+
+    function handleResult(event) {
+      const results = Array.from(event.results).slice(event.resultIndex);
+      const finalTranscript = results.filter(r => r.isFinal).map(r => r[0].transcript).join('').trim();
+
+      if (!finalTranscript) return;
+
+      pendingTranscript += (pendingTranscript ? ' ' : '') + finalTranscript;
+      clearTimeout(translationTimer);
+      translationTimer = setTimeout(flushTranslation, TRANSLATION_DELAY);
     }
 
     function startRecognition() {
@@ -420,6 +428,8 @@
     }
 
     function stopRecognition() {
+      clearTimeout(translationTimer);
+      translationTimer = null;
       if (recognition) {
         recognition.onresult = null;
         recognition.onerror = null;
@@ -429,6 +439,7 @@
       }
       isRecording = false;
       updateStatus('停止中', false);
+      if (pendingTranscript) flushTranslation();
     }
 
     function toggleRecording() {
