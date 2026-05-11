@@ -417,10 +417,10 @@
       if (!pendingTranscript) return;
       const toTranslate = pendingTranscript;
       pendingTranscript = '';
+      addTranscript(toTranslate);
       updateStatus('翻訳中...', 'processing');
       const translated = await translateText(toTranslate);
       if (translated) {
-        addTranscript(toTranslate);
         appendHistory(translated);
         if (isRecording) updateStatus('録音中', 'recording');
       } else if (isRecording) {
