@@ -348,6 +348,7 @@
     }
 
     function toggleRecording() {
+      console.log('toggleRecording呼ばれた', isRecording);
       if (isRecording) {
         stopRecognition();
       } else {
@@ -367,6 +368,7 @@
       currentTarget = event.target.value;
     });
 
+    console.log('ボタンイベント登録完了');
     toggleButton.addEventListener('click', toggleRecording);
 
     createOptions();
