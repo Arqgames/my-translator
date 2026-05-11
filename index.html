@@ -316,7 +316,9 @@
         }
       };
       recognition.onerror = event => {
+        if (event.error === 'aborted' || event.error === 'no-speech') return;
         console.error('SpeechRecognition error', event.error);
+        isRecording = false;
         updateStatus('音声認識エラー: ' + event.error, false);
       };
       recognition.onresult = handleResult;
