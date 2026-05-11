@@ -127,6 +127,14 @@
     }
     #toggleButton:active { transform: scale(.98); }
     #toggleButton.stopped { background: linear-gradient(135deg, #0d263f, #12263e); }
+    .live-text {
+      min-height: 1.4em;
+      font-size: .92rem;
+      color: rgba(255,255,255,.4);
+      font-style: italic;
+      padding: 0 6px;
+      word-break: break-word;
+    }
     .history {
       border: 1px solid rgba(255,255,255,.08);
       border-radius: 24px;
@@ -241,6 +249,7 @@
       <div id="statusIndicator" class="indicator">準備完了</div>
       <button id="toggleButton" class="stopped" type="button">録音を開始</button>
     </div>
+    <div id="liveText" class="live-text"></div>
     <div class="history" id="history" aria-live="polite"></div>
     <div class="transcript-panel">
       <div class="transcript-header" id="transcriptHeader">
@@ -269,6 +278,7 @@
     const transcriptToggle = document.getElementById('transcriptToggle');
     const copyBtn = document.getElementById('copyBtn');
     const swapBtn = document.getElementById('swapBtn');
+    const liveTextEl = document.getElementById('liveText');
 
     let recognition = null;
     let isRecording = false;
@@ -278,8 +288,7 @@
     const transcriptLog = [];
     let pendingTranscript = '';
     let translationTimer = null;
-    let processedCount = 0;
-    const TRANSLATION_DELAY = 3000;
+    const TRANSLATION_DELAY = 1500;
 
     function createOptions() {
       languages.forEach(lang => {
@@ -419,41 +428,50 @@
       }
     }
 
-    function handleResult(event) {
-      let finalTranscript = '';
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        if (i < processedCount) continue;
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
-          processedCount = i + 1;
-        }
-      }
-      finalTranscript = finalTranscript.trim();
-      if (!finalTranscript) return;
+    function isSentenceComplete(text) {
+      return /[。！？.!?]$/.test(text.trim());
+    }
 
-      pendingTranscript += (pendingTranscript ? ' ' : '') + finalTranscript;
+    function handleResult(event) {
+      const result = event.results[event.resultIndex];
+      const transcript = result[0].transcript.trim();
+      if (!transcript) return;
+
+      if (!result.isFinal) {
+        liveTextEl.textContent = transcript;
+        return;
+      }
+
+      liveTextEl.textContent = '';
+      pendingTranscript += (pendingTranscript ? ' ' : '') + transcript;
       clearTimeout(translationTimer);
-      updateStatus('認識中...', 'processing');
-      translationTimer = setTimeout(flushTranslation, TRANSLATION_DELAY);
+
+      if (isSentenceComplete(pendingTranscript)) {
+        flushTranslation();
+      } else {
+        updateStatus('認識中...', 'processing');
+        translationTimer = setTimeout(flushTranslation, TRANSLATION_DELAY);
+      }
     }
 
     function startRecognition() {
       if (!('webkitSpeechRecognition' in window || 'SpeechRecognition' in window)) {
-        updateStatus('お使いのブラウザは音声認識に対応していません。', false);
+        updateStatus('お使いのブラウザは音声認識に対応していません。', 'stopped');
         return;
       }
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       recognition = new SpeechRecognition();
       recognition.lang = getLanguageData(currentSource).recognition;
-      recognition.continuous = true;
+      recognition.continuous = false;
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
 
-      recognition.onstart = () => { processedCount = 0; console.log('音声認識開始'); updateStatus('録音中', 'recording'); };
+      recognition.onstart = () => { console.log('音声認識開始'); updateStatus('録音中', 'recording'); };
       recognition.onend = () => {
         console.log('音声認識終了');
+        recognition = null;
         if (isRecording) {
-          recognition.start();
+          startRecognition();
         } else {
           updateStatus('停止中', 'stopped');
         }
@@ -483,6 +501,7 @@
         recognition.stop();
         recognition = null;
       }
+      liveTextEl.textContent = '';
       isRecording = false;
       updateStatus('停止中', 'stopped');
       if (pendingTranscript) flushTranslation();
