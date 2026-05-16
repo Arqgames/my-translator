@@ -225,6 +225,46 @@
       line-height: 1.5;
       word-break: break-word;
     }
+    .text-input-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .text-input-label {
+      font-size: .88rem;
+      color: rgba(255,255,255,.55);
+      padding: 0 4px;
+    }
+    #textInput {
+      width: 100%;
+      padding: 14px 16px;
+      border-radius: 18px;
+      border: 1px solid rgba(255,255,255,.12);
+      background: rgba(255,255,255,.04);
+      color: #fff;
+      font-size: 1rem;
+      resize: none;
+      min-height: 76px;
+      font-family: inherit;
+      line-height: 1.5;
+      outline: none;
+      transition: border-color .15s;
+    }
+    #textInput:focus { border-color: rgba(10,116,218,.55); }
+    #textInput::placeholder { color: rgba(255,255,255,.28); font-style: italic; }
+    #textTranslateBtn {
+      padding: 14px 16px;
+      border: none;
+      border-radius: 18px;
+      background: linear-gradient(135deg, #1060c0, #1e4a9a);
+      color: #fff;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform .15s;
+    }
+    #textTranslateBtn:active { transform: scale(.98); }
+    #textTranslateBtn:disabled { opacity: .45; cursor: not-allowed; transform: none; }
     @media (max-width: 540px) {
       header { padding-top: 16px; }
     }
@@ -252,6 +292,11 @@
     </div>
     <div id="liveText" class="live-text"></div>
     <div class="history" id="history" aria-live="polite"></div>
+    <div class="text-input-section">
+      <span class="text-input-label">テキスト入力で翻訳 (Ctrl+Enter で送信)</span>
+      <textarea id="textInput" placeholder="ここに文章を入力..." rows="3"></textarea>
+      <button id="textTranslateBtn" type="button">翻訳する</button>
+    </div>
     <div class="transcript-panel">
       <div class="transcript-header" id="transcriptHeader">
         <span>文字起こし記録</span>
@@ -289,7 +334,8 @@
     const transcriptLog = [];
     let pendingTranscript = '';
     let translationTimer = null;
-    const TRANSLATION_DELAY = 1500;
+    const TRANSLATION_DELAY = 2000;
+    const MAX_PENDING_LENGTH = 100;
 
     function createOptions() {
       languages.forEach(lang => {
@@ -421,11 +467,11 @@
       addTranscript(toTranslate);
       updateStatus('翻訳中...', 'processing');
       const translated = await translateText(toTranslate);
-      if (translated) {
-        appendHistory(translated);
-        if (isRecording) updateStatus('録音中', 'recording');
-      } else if (isRecording) {
-        updateStatus('翻訳に失敗しました。', 'recording');
+      if (translated) appendHistory(translated);
+      if (isRecording) {
+        updateStatus(translated ? '録音中' : '翻訳に失敗しました。', 'recording');
+      } else {
+        updateStatus('停止中', 'stopped');
       }
     }
 
@@ -445,13 +491,17 @@
 
       liveTextEl.textContent = '';
       pendingTranscript += (pendingTranscript ? ' ' : '') + transcript;
-      clearTimeout(translationTimer);
 
-      if (isSentenceComplete(pendingTranscript)) {
+      if (isSentenceComplete(pendingTranscript) || pendingTranscript.length >= MAX_PENDING_LENGTH) {
+        clearTimeout(translationTimer);
+        translationTimer = null;
         flushTranslation();
-      } else {
-        updateStatus('認識中...', 'processing');
-        translationTimer = setTimeout(flushTranslation, TRANSLATION_DELAY);
+      } else if (!translationTimer) {
+        updateStatus('認識中...', 'recording');
+        translationTimer = setTimeout(() => {
+          translationTimer = null;
+          flushTranslation();
+        }, TRANSLATION_DELAY);
       }
     }
 
@@ -516,6 +566,30 @@
         startRecognition();
       }
     }
+
+    const textInput = document.getElementById('textInput');
+    const textTranslateBtn = document.getElementById('textTranslateBtn');
+
+    async function translateFromInput() {
+      const text = textInput.value.trim();
+      if (!text) return;
+      textTranslateBtn.disabled = true;
+      textTranslateBtn.textContent = '翻訳中...';
+      addTranscript(text);
+      const translated = await translateText(text);
+      if (translated) appendHistory(translated);
+      textInput.value = '';
+      textTranslateBtn.disabled = false;
+      textTranslateBtn.textContent = '翻訳する';
+    }
+
+    textTranslateBtn.addEventListener('click', translateFromInput);
+    textInput.addEventListener('keydown', event => {
+      if (event.key === 'Enter' && event.ctrlKey) {
+        event.preventDefault();
+        translateFromInput();
+      }
+    });
 
     sourceSelect.addEventListener('change', event => {
       currentSource = event.target.value;
